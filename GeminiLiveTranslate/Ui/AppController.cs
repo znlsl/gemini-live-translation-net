@@ -192,6 +192,7 @@ public sealed class AppController : IDisposable
     private void ShowHud()
     {
         _hud.Show();
+        if (_hud.WindowState == WindowState.Minimized) _hud.WindowState = WindowState.Normal;
         _hud.Activate();
     }
 

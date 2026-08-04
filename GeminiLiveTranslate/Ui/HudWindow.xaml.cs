@@ -27,16 +27,57 @@ public partial class HudWindow : Window
 
     public void ApplySettings()
     {
-        Width = Math.Max(420, _settings.Hud.Width);
-        Height = Math.Max(150, _settings.Hud.Height);
+        var workArea = SystemParameters.WorkArea;
+        var width = _settings.Hud.Width;
+        var height = _settings.Hud.Height;
+        if (width <= 0 || height <= 0)
+        {
+            width = workArea.Width / 3;
+            height = workArea.Height / 4;
+            _settings.Hud.Width = width;
+            _settings.Hud.Height = height;
+            _settings.Hud.Left = workArea.Left + (workArea.Width - width) / 2;
+            _settings.Hud.Top = workArea.Top + (workArea.Height - height) / 2;
+        }
+
+        Width = width;
+        Height = height;
         Left = _settings.Hud.Left;
         Top = _settings.Hud.Top;
         OutputText.FontSize = _settings.FontSize;
+        try
+        {
+            var fontFamily = new System.Windows.Media.FontFamily(_settings.FontFamily);
+            OutputText.FontFamily = fontFamily;
+            InputText.FontFamily = fontFamily;
+        }
+        catch (ArgumentException)
+        {
+            var fallback = new System.Windows.Media.FontFamily("Segoe UI");
+            OutputText.FontFamily = fallback;
+            InputText.FontFamily = fallback;
+        }
+        ApplyFontStyle();
         InputText.Visibility = _settings.ShowOriginal ? Visibility.Visible : Visibility.Collapsed;
         InputScroll.Visibility = _settings.ShowOriginal ? Visibility.Visible : Visibility.Collapsed;
         LaneDivider.Visibility = _settings.ShowOriginal ? Visibility.Visible : Visibility.Collapsed;
         var opacity = (byte)(Math.Clamp(_settings.BackgroundOpacity, 0.2, 0.95) * 255);
         RootPanel.Background = new SolidColorBrush(MediaColor.FromArgb(opacity, 17, 24, 39));
+    }
+    private void ApplyFontStyle()
+    {
+        var style = _settings.FontStyle;
+        var weight = style.Contains("Bold", StringComparison.OrdinalIgnoreCase) ? FontWeights.Bold : FontWeights.Normal;
+        var fontStyle = style.Contains("Italic", StringComparison.OrdinalIgnoreCase) ? FontStyles.Italic : FontStyles.Normal;
+        var decorations = new TextDecorationCollection();
+        if (style.Contains("Underline", StringComparison.OrdinalIgnoreCase)) decorations.Add(TextDecorations.Underline[0]);
+        if (style.Contains("Strikeout", StringComparison.OrdinalIgnoreCase)) decorations.Add(TextDecorations.Strikethrough[0]);
+        OutputText.FontWeight = weight;
+        InputText.FontWeight = weight;
+        OutputText.FontStyle = fontStyle;
+        InputText.FontStyle = fontStyle;
+        OutputText.TextDecorations = decorations;
+        InputText.TextDecorations = decorations;
     }
 
     public void SavePlacement()
@@ -88,6 +129,7 @@ public partial class HudWindow : Window
     private void ToggleButton_OnClick(object sender, RoutedEventArgs e) => ToggleRequested?.Invoke();
     private void SettingsButton_OnClick(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();
     private void ExitButton_OnClick(object sender, RoutedEventArgs e) => ExitRequested?.Invoke();
+    private void MinimizeButton_OnClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
     private void DragBar_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {

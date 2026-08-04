@@ -8,7 +8,9 @@ public sealed class AppSettings
     public string TargetLanguage { get; set; } = "zh-CN";
     public string AudioSource { get; set; } = "system";
     public int AudioDeviceNumber { get; set; } = -1;
-    public int FontSize { get; set; } = 15;
+    public int FontSize { get; set; } = 14;
+    public string FontStyle { get; set; } = "Regular";
+    public string FontFamily { get; set; } = "Segoe UI";
     public double BackgroundOpacity { get; set; } = 0.72;
     public bool EchoTargetLanguage { get; set; }
     public double PlaybackVolume { get; set; } = 0.8;
@@ -24,7 +26,9 @@ public sealed class AppSettings
         ProxyUrl = ProxyUrl.Trim();
         TargetLanguage = string.IsNullOrWhiteSpace(TargetLanguage) ? "zh-CN" : TargetLanguage.Trim();
         AudioSource = AudioSource is "mic" or "system" ? AudioSource : "system";
-        FontSize = Math.Clamp(FontSize, 14, 60);
+        FontSize = Math.Clamp(FontSize, 8, 60);
+        FontStyle = string.IsNullOrWhiteSpace(FontStyle) ? "Regular" : FontStyle.Trim();
+        FontFamily = string.IsNullOrWhiteSpace(FontFamily) ? "Segoe UI" : FontFamily.Trim();
         BackgroundOpacity = Math.Clamp(BackgroundOpacity, 0.2, 0.95);
         PlaybackVolume = Math.Clamp(PlaybackVolume, 0, 1);
         GeminiModel = string.IsNullOrWhiteSpace(GeminiModel) ? "models/gemini-3.5-live-translate-preview" : GeminiModel.Trim();
@@ -35,6 +39,6 @@ public sealed class WindowPlacement
 {
     public double Left { get; set; } = 120;
     public double Top { get; set; } = 120;
-    public double Width { get; set; } = 780;
-    public double Height { get; set; } = 190;
+    public double Width { get; set; }
+    public double Height { get; set; }
 }

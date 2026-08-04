@@ -20,9 +20,10 @@
         <Ellipse x:Name="StatusDot" Width="10" Height="10" Fill="#64748B" Margin="0,0,8,0" />
         <TextBlock x:Name="StatusText" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" Text="Idle" />
         <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
-          <Button x:Name="ToggleButton" Width="72" Height="28" Margin="8,0,0,0" Content="Start" Click="ToggleButton_OnClick" />
-          <Button Width="72" Height="28" Margin="8,0,0,0" Content="Settings" Click="SettingsButton_OnClick" />
-          <Button Width="32" Height="28" Margin="8,0,0,0" Content="X" Click="ExitButton_OnClick" />
+          <Button x:Name="ToggleButton" Width="60" Height="24" Margin="6,0,0,0" FontSize="12" Content="Start" Click="ToggleButton_OnClick" />
+          <Button Width="60" Height="24" Margin="6,0,0,0" FontSize="12" Content="Settings" Click="SettingsButton_OnClick" />
+          <Button Width="26" Height="24" Margin="6,0,0,0" FontSize="12" Content="—" ToolTip="Minimize" Click="MinimizeButton_OnClick" />
+          <Button Width="26" Height="24" Margin="6,0,0,0" FontSize="12" Content="X" Click="ExitButton_OnClick" />
         </StackPanel>
       </DockPanel>
       <Grid Grid.Row="1" Margin="0,12,0,8">

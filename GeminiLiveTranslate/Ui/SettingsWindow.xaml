@@ -60,8 +60,11 @@
         <TextBlock Text="Playback Volume (0.0 - 1.0)" />
         <TextBox x:Name="VolumeBox" Margin="0,4,0,12" />
 
-        <TextBlock Text="HUD Font Size" />
-        <TextBox x:Name="FontSizeBox" Margin="0,4,0,12" />
+        <TextBlock Text="HUD Font" />
+        <StackPanel Orientation="Horizontal" Margin="0,4,0,12">
+          <Button x:Name="FontButton" Width="110" Height="28" FontSize="12" Content="Choose Font..." Click="FontButton_OnClick" />
+          <TextBlock x:Name="FontSummaryText" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="#64748B" Text="Segoe UI, 14 pt" />
+        </StackPanel>
 
         <TextBlock Text="HUD Background Opacity (0.2 - 0.95)" />
         <TextBox x:Name="OpacityBox" Margin="0,4,0,12" />
@@ -71,8 +74,8 @@
       </StackPanel>
     </ScrollViewer>
     <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-      <Button Width="88" Height="32" Content="Cancel" IsCancel="True" Margin="0,0,8,0" />
-      <Button Width="88" Height="32" Content="Save" IsDefault="True" Click="SaveButton_OnClick" />
+      <Button Width="76" Height="28" FontSize="12" Content="Cancel" IsCancel="True" Margin="0,0,6,0" />
+      <Button Width="76" Height="28" FontSize="12" Content="Save" IsDefault="True" Click="SaveButton_OnClick" />
     </StackPanel>
   </Grid>
 </Window>

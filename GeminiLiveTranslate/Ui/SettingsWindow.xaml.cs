@@ -1,6 +1,10 @@
 using System.Windows;
 using System.Windows.Controls;
 using GeminiLiveTranslate.Settings;
+using DrawingFont = System.Drawing.Font;
+using DrawingFontStyle = System.Drawing.FontStyle;
+using FormsDialogResult = System.Windows.Forms.DialogResult;
+using FormsFontDialog = System.Windows.Forms.FontDialog;
 
 namespace GeminiLiveTranslate.Ui;
 
@@ -27,9 +31,47 @@ public partial class SettingsWindow : Window
         EchoBox.IsChecked = _settings.EchoTargetLanguage;
         ShowOriginalBox.IsChecked = _settings.ShowOriginal;
         VolumeBox.Text = _settings.PlaybackVolume.ToString("0.##");
-        FontSizeBox.Text = _settings.FontSize.ToString();
+        UpdateFontSummary();
         OpacityBox.Text = _settings.BackgroundOpacity.ToString("0.##");
         PromptBox.Text = _settings.SystemPrompt;
+    }
+    private void FontButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        using var currentFont = CreateDrawingFont();
+        using var dialog = new FormsFontDialog
+        {
+            FontMustExist = true,
+            ShowColor = false,
+            ShowEffects = true,
+            AllowScriptChange = true,
+            Font = currentFont
+        };
+        if (dialog.ShowDialog() != FormsDialogResult.OK) return;
+
+        _settings.FontFamily = dialog.Font.FontFamily.Name;
+        _settings.FontSize = Math.Clamp((int)Math.Round(dialog.Font.Size), 8, 60);
+        _settings.FontStyle = dialog.Font.Style.ToString();
+        UpdateFontSummary();
+    }
+
+    private DrawingFont CreateDrawingFont()
+    {
+        var style = Enum.TryParse<DrawingFontStyle>(_settings.FontStyle, true, out var parsed)
+            ? parsed
+            : DrawingFontStyle.Regular;
+        try
+        {
+            return new DrawingFont(_settings.FontFamily, Math.Max(1, _settings.FontSize), style);
+        }
+        catch (ArgumentException)
+        {
+            return new DrawingFont("Segoe UI", Math.Max(1, _settings.FontSize), style);
+        }
+    }
+
+    private void UpdateFontSummary()
+    {
+        FontSummaryText.Text = $"{_settings.FontFamily}, {_settings.FontSize} pt, {_settings.FontStyle}";
     }
 
     private void SaveButton_OnClick(object sender, RoutedEventArgs e)
@@ -44,7 +86,6 @@ public partial class SettingsWindow : Window
         _settings.EchoTargetLanguage = EchoBox.IsChecked == true;
         _settings.ShowOriginal = ShowOriginalBox.IsChecked == true;
         _settings.PlaybackVolume = double.TryParse(VolumeBox.Text, out var volume) ? volume : 0.8;
-        _settings.FontSize = int.TryParse(FontSizeBox.Text, out var size) ? size : 15;
         _settings.BackgroundOpacity = double.TryParse(OpacityBox.Text, out var opacity) ? opacity : 0.72;
         _settings.SystemPrompt = PromptBox.Text;
         _settings.Normalize();
