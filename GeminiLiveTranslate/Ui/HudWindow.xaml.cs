@@ -27,6 +27,7 @@ public partial class HudWindow : Window
 
     public void ApplySettings()
     {
+        _settings.Normalize();
         var workArea = SystemParameters.WorkArea;
         var width = _settings.Hud.Width;
         var height = _settings.Hud.Height;
@@ -44,40 +45,35 @@ public partial class HudWindow : Window
         Height = height;
         Left = _settings.Hud.Left;
         Top = _settings.Hud.Top;
-        OutputText.FontSize = _settings.FontSize;
-        try
-        {
-            var fontFamily = new System.Windows.Media.FontFamily(_settings.FontFamily);
-            OutputText.FontFamily = fontFamily;
-            InputText.FontFamily = fontFamily;
-        }
-        catch (ArgumentException)
-        {
-            var fallback = new System.Windows.Media.FontFamily("Segoe UI");
-            OutputText.FontFamily = fallback;
-            InputText.FontFamily = fallback;
-        }
-        ApplyFontStyle();
+        ApplyTextAppearance(OutputText, _settings.TranslationTextAppearance!);
+        ApplyTextAppearance(InputText, _settings.SourceTextAppearance!);
         InputText.Visibility = _settings.ShowOriginal ? Visibility.Visible : Visibility.Collapsed;
         InputScroll.Visibility = _settings.ShowOriginal ? Visibility.Visible : Visibility.Collapsed;
         LaneDivider.Visibility = _settings.ShowOriginal ? Visibility.Visible : Visibility.Collapsed;
         var opacity = (byte)(Math.Clamp(_settings.BackgroundOpacity, 0.2, 0.95) * 255);
         RootPanel.Background = new SolidColorBrush(MediaColor.FromArgb(opacity, 17, 24, 39));
     }
-    private void ApplyFontStyle()
+
+    private static void ApplyTextAppearance(TextBlock textBlock, TextAppearanceSettings appearance)
     {
-        var style = _settings.FontStyle;
+        textBlock.FontSize = appearance.FontSize;
+        try
+        {
+            textBlock.FontFamily = new System.Windows.Media.FontFamily(appearance.FontFamily);
+        }
+        catch (ArgumentException)
+        {
+            textBlock.FontFamily = new System.Windows.Media.FontFamily("Segoe UI");
+        }
+        var style = appearance.FontStyle;
         var weight = style.Contains("Bold", StringComparison.OrdinalIgnoreCase) ? FontWeights.Bold : FontWeights.Normal;
         var fontStyle = style.Contains("Italic", StringComparison.OrdinalIgnoreCase) ? FontStyles.Italic : FontStyles.Normal;
         var decorations = new TextDecorationCollection();
         if (style.Contains("Underline", StringComparison.OrdinalIgnoreCase)) decorations.Add(TextDecorations.Underline[0]);
         if (style.Contains("Strikeout", StringComparison.OrdinalIgnoreCase)) decorations.Add(TextDecorations.Strikethrough[0]);
-        OutputText.FontWeight = weight;
-        InputText.FontWeight = weight;
-        OutputText.FontStyle = fontStyle;
-        InputText.FontStyle = fontStyle;
-        OutputText.TextDecorations = decorations;
-        InputText.TextDecorations = decorations;
+        textBlock.FontWeight = weight;
+        textBlock.FontStyle = fontStyle;
+        textBlock.TextDecorations = decorations;
     }
 
     public void SavePlacement()

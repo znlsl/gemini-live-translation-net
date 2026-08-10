@@ -44,7 +44,7 @@ public sealed class AppController : IDisposable
         _player = player;
         _subtitleTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(180)
+            Interval = TimeSpan.FromMilliseconds(60)
         };
         _subtitleTimer.Tick += (_, _) => FlushSubtitleUpdates();
         WireEvents();
@@ -102,7 +102,7 @@ public sealed class AppController : IDisposable
         });
         _gemini.Connected += sessionId => OnUi(() =>
         {
-            if (sessionId != _activeSessionId) return;
+            if (sessionId != _activeSessionId || !_running) return;
             _hud.SetStatus("Connected", "connected");
             StartCapture(sessionId);
         });
@@ -132,7 +132,8 @@ public sealed class AppController : IDisposable
             return;
         }
 
-        if (_settings.EchoTargetLanguage) _player.Start(_settings.PlaybackVolume);
+        var echoTargetLanguage = _settings.EchoTargetLanguage && _settings.AudioSource != "both";
+        if (echoTargetLanguage) _player.Start(_settings.PlaybackVolume);
         ClearPendingSubtitles();
         _hud.ClearTranscripts();
         _activeSessionId = _gemini.Start(new GeminiSessionOptions(
@@ -142,7 +143,7 @@ public sealed class AppController : IDisposable
             _settings.GeminiModel,
             _settings.TargetLanguage,
             _settings.SystemPrompt,
-            _settings.EchoTargetLanguage));
+            echoTargetLanguage));
         _running = true;
         _hud.SetRunning(true);
         _hud.SetStatus("Connecting...", "connecting");

@@ -15,6 +15,7 @@ public partial class SettingsWindow : Window
     public SettingsWindow(AppSettings settings)
     {
         _settings = settings;
+        _settings.Normalize();
         InitializeComponent();
         LoadSettings();
     }
@@ -31,13 +32,15 @@ public partial class SettingsWindow : Window
         EchoBox.IsChecked = _settings.EchoTargetLanguage;
         ShowOriginalBox.IsChecked = _settings.ShowOriginal;
         VolumeBox.Text = _settings.PlaybackVolume.ToString("0.##");
+        TextRoleBox.SelectedIndex = 1;
         UpdateFontSummary();
         OpacityBox.Text = _settings.BackgroundOpacity.ToString("0.##");
         PromptBox.Text = _settings.SystemPrompt;
     }
     private void FontButton_OnClick(object sender, RoutedEventArgs e)
     {
-        using var currentFont = CreateDrawingFont();
+        var appearance = GetSelectedTextAppearance();
+        using var currentFont = CreateDrawingFont(appearance);
         using var dialog = new FormsFontDialog
         {
             FontMustExist = true,
@@ -48,30 +51,45 @@ public partial class SettingsWindow : Window
         };
         if (dialog.ShowDialog() != FormsDialogResult.OK) return;
 
-        _settings.FontFamily = dialog.Font.FontFamily.Name;
-        _settings.FontSize = Math.Clamp((int)Math.Round(dialog.Font.Size), 8, 60);
-        _settings.FontStyle = dialog.Font.Style.ToString();
+        appearance.FontFamily = dialog.Font.FontFamily.Name;
+        appearance.FontSize = Math.Clamp((int)Math.Round(dialog.Font.Size), 8, 60);
+        appearance.FontStyle = dialog.Font.Style.ToString();
         UpdateFontSummary();
     }
 
-    private DrawingFont CreateDrawingFont()
+    private TextAppearanceSettings GetSelectedTextAppearance()
     {
-        var style = Enum.TryParse<DrawingFontStyle>(_settings.FontStyle, true, out var parsed)
+        var isSource = string.Equals(
+            (TextRoleBox.SelectedItem as ComboBoxItem)?.Tag?.ToString(),
+            "Source",
+            StringComparison.OrdinalIgnoreCase);
+        return isSource ? _settings.SourceTextAppearance! : _settings.TranslationTextAppearance!;
+    }
+
+    private DrawingFont CreateDrawingFont(TextAppearanceSettings appearance)
+    {
+        var style = Enum.TryParse<DrawingFontStyle>(appearance.FontStyle, true, out var parsed)
             ? parsed
             : DrawingFontStyle.Regular;
         try
         {
-            return new DrawingFont(_settings.FontFamily, Math.Max(1, _settings.FontSize), style);
+            return new DrawingFont(appearance.FontFamily, Math.Max(1, appearance.FontSize), style);
         }
         catch (ArgumentException)
         {
-            return new DrawingFont("Segoe UI", Math.Max(1, _settings.FontSize), style);
+            return new DrawingFont("Segoe UI", Math.Max(1, appearance.FontSize), style);
         }
     }
 
     private void UpdateFontSummary()
     {
-        FontSummaryText.Text = $"{_settings.FontFamily}, {_settings.FontSize} pt, {_settings.FontStyle}";
+        var appearance = GetSelectedTextAppearance();
+        FontSummaryText.Text = $"{appearance.FontFamily}, {appearance.FontSize} pt, {appearance.FontStyle}";
+    }
+
+    private void TextRoleBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (FontSummaryText is not null) UpdateFontSummary();
     }
 
     private void SaveButton_OnClick(object sender, RoutedEventArgs e)

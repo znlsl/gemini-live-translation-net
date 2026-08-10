@@ -45,11 +45,17 @@
           <ComboBoxItem Content="vi" />
         </ComboBox>
 
-        <TextBlock Text="Audio Source" />
-        <ComboBox x:Name="AudioSourceBox" Margin="0,4,0,12">
+        <TextBlock Text="Audio Sources" />
+        <ComboBox x:Name="AudioSourceBox" Margin="0,4,0,4">
           <ComboBoxItem Content="system" />
           <ComboBoxItem Content="mic" />
+          <ComboBoxItem Content="both" />
         </ComboBox>
+        <TextBlock Text="both mixes system audio and microphone input. Avoid translated playback in this mode to prevent feedback."
+                   Foreground="#64748B"
+                   TextWrapping="Wrap"
+                   FontSize="12"
+                   Margin="0,0,0,12" />
 
         <TextBlock Text="Mic Device Number (-1 uses default)" />
         <TextBox x:Name="DeviceBox" Margin="0,4,0,12" />
@@ -60,7 +66,11 @@
         <TextBlock Text="Playback Volume (0.0 - 1.0)" />
         <TextBox x:Name="VolumeBox" Margin="0,4,0,12" />
 
-        <TextBlock Text="HUD Font" />
+        <TextBlock Text="HUD Text Font" />
+        <ComboBox x:Name="TextRoleBox" Margin="0,4,0,6" SelectionChanged="TextRoleBox_OnSelectionChanged">
+          <ComboBoxItem Tag="Source" Content="Source text" />
+          <ComboBoxItem Tag="Translation" Content="Translation text" />
+        </ComboBox>
         <StackPanel Orientation="Horizontal" Margin="0,4,0,12">
           <Button x:Name="FontButton" Width="110" Height="28" FontSize="12" Content="Choose Font..." Click="FontButton_OnClick" />
           <TextBlock x:Name="FontSummaryText" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="#64748B" Text="Segoe UI, 14 pt" />
