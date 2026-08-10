@@ -22,7 +22,7 @@ internal static class RealtimeWebSocket
     }
 
     public static async Task<string> ReceiveTextAsync(
-        ClientWebSocket socket,
+        WebSocket socket,
         string providerName,
         CancellationToken token)
     {
@@ -34,8 +34,6 @@ internal static class RealtimeWebSocket
             result = await socket.ReceiveAsync(buffer, token);
             if (result.MessageType == WebSocketMessageType.Close)
                 throw new WebSocketException($"{providerName} closed the WebSocket.");
-            if (result.MessageType != WebSocketMessageType.Text)
-                throw new WebSocketException($"{providerName} returned an unexpected binary message.");
             stream.Write(buffer, 0, result.Count);
         } while (!result.EndOfMessage);
 

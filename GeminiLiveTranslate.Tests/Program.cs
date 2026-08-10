@@ -1,3 +1,5 @@
+using System.Net.WebSockets;
+using System.Text;
 using GeminiLiveTranslate.Audio;
 using GeminiLiveTranslate.Settings;
 using GeminiLiveTranslate.Soniox;
@@ -9,6 +11,7 @@ Run("PCM chunker emits 100 ms chunks", PcmChunkerEmitsOneHundredMillisecondChunk
 Run("Dual-source mixer does not wait for a silent source", MixerDoesNotWaitForSilentSource);
 Run("Realtime audio buffer drops oldest backlog", AudioBufferDropsOldestBacklog);
 Run("Realtime audio buffer drops stale chunks", AudioBufferDropsStaleChunks);
+Run("Realtime WebSocket accepts UTF-8 JSON in a binary frame", RealtimeWebSocketAcceptsUtf8JsonInBinaryFrame);
 Run("Translation client selects and switches providers", TranslationClientSelectsAndSwitchesProviders);
 Run("Soniox transcript accumulator replaces interim tokens", SonioxTranscriptAccumulatorReplacesInterimTokens);
 Run("Soniox transcript accumulator starts fresh after an endpoint", SonioxTranscriptAccumulatorStartsFreshAfterEndpoint);
@@ -94,6 +97,19 @@ static void AudioBufferDropsStaleChunks()
 
     True(!buffer.TryTakeFresh(out _), "Audio older than the realtime budget must not be sent.");
     Equal(1, buffer.DroppedCount, "Expired audio must be included in dropped statistics.");
+}
+
+static void RealtimeWebSocketAcceptsUtf8JsonInBinaryFrame()
+{
+    const string expected = "{\"setupComplete\":{}}";
+    using var socket = new BinaryMessageWebSocket(Encoding.UTF8.GetBytes(expected));
+
+    var actual = RealtimeWebSocket.ReceiveTextAsync(
+        socket,
+        "Gemini",
+        CancellationToken.None).GetAwaiter().GetResult();
+
+    Equal(expected, actual, "Gemini binary frames containing UTF-8 JSON must be decoded.");
 }
 
 static void TranslationClientSelectsAndSwitchesProviders()
@@ -283,4 +299,56 @@ sealed class FakeTranslationAdapter : ILiveTranslationAdapter
     public void Stop() => StopCount++;
     public void SendAudio(byte[] pcm16, int sessionId) => AudioCount++;
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
+sealed class BinaryMessageWebSocket(byte[] payload) : WebSocket
+{
+    private WebSocketState _state = WebSocketState.Open;
+    private bool _received;
+
+    public override WebSocketCloseStatus? CloseStatus => null;
+    public override string? CloseStatusDescription => null;
+    public override WebSocketState State => _state;
+    public override string? SubProtocol => null;
+
+    public override void Abort() => _state = WebSocketState.Aborted;
+
+    public override Task CloseAsync(
+        WebSocketCloseStatus closeStatus,
+        string? statusDescription,
+        CancellationToken cancellationToken)
+    {
+        _state = WebSocketState.Closed;
+        return Task.CompletedTask;
+    }
+
+    public override Task CloseOutputAsync(
+        WebSocketCloseStatus closeStatus,
+        string? statusDescription,
+        CancellationToken cancellationToken)
+    {
+        _state = WebSocketState.CloseSent;
+        return Task.CompletedTask;
+    }
+
+    public override void Dispose() => _state = WebSocketState.Closed;
+
+    public override Task<WebSocketReceiveResult> ReceiveAsync(
+        ArraySegment<byte> buffer,
+        CancellationToken cancellationToken)
+    {
+        if (_received) throw new InvalidOperationException("The test WebSocket has no more messages.");
+        _received = true;
+        Buffer.BlockCopy(payload, 0, buffer.Array!, buffer.Offset, payload.Length);
+        return Task.FromResult(new WebSocketReceiveResult(
+            payload.Length,
+            WebSocketMessageType.Binary,
+            endOfMessage: true));
+    }
+
+    public override Task SendAsync(
+        ArraySegment<byte> buffer,
+        WebSocketMessageType messageType,
+        bool endOfMessage,
+        CancellationToken cancellationToken) => Task.CompletedTask;
 }
