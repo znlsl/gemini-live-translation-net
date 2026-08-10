@@ -8,7 +8,8 @@
         AllowsTransparency="True"
         ResizeMode="CanResizeWithGrip"
         Topmost="True"
-        Background="Transparent">
+        Background="Transparent"
+        PreviewKeyDown="HudWindow_OnPreviewKeyDown">
   <Border x:Name="RootPanel" CornerRadius="8" Padding="14" Background="{StaticResource PanelBrush}" MouseLeftButtonDown="RootPanel_OnMouseLeftButtonDown">
     <Grid>
       <Grid.RowDefinitions>
@@ -32,11 +33,13 @@
           <RowDefinition Height="Auto" />
           <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <ScrollViewer x:Name="OutputScroll" Grid.Row="0" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer x:Name="OutputScroll" Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                      PreviewMouseWheel="TranscriptScroll_OnPreviewMouseWheel" ScrollChanged="TranscriptScroll_OnScrollChanged">
           <TextBlock x:Name="OutputText" Text="Ready" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" FontSize="22" FontWeight="SemiBold" />
         </ScrollViewer>
         <Border x:Name="LaneDivider" Grid.Row="1" Height="1" Background="#334155" Margin="0,8" />
-        <ScrollViewer x:Name="InputScroll" Grid.Row="2" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer x:Name="InputScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                      PreviewMouseWheel="TranscriptScroll_OnPreviewMouseWheel" ScrollChanged="TranscriptScroll_OnScrollChanged">
           <TextBlock x:Name="InputText" Text="" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" FontSize="14" />
         </ScrollViewer>
       </Grid>

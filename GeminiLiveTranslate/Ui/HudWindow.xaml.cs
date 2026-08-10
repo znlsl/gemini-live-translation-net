@@ -13,6 +13,8 @@ public partial class HudWindow : Window
     private readonly AppSettings _settings;
     private readonly RollingTextTrack _translationTrack = new();
     private readonly RollingTextTrack _sourceTrack = new();
+    private readonly AutoScrollState _translationAutoScroll = new();
+    private readonly AutoScrollState _sourceAutoScroll = new();
 
     public event Action? ToggleRequested;
     public event Action? SettingsRequested;
@@ -103,6 +105,8 @@ public partial class HudWindow : Window
     {
         _translationTrack.Clear();
         _sourceTrack.Clear();
+        _translationAutoScroll.Resume();
+        _sourceAutoScroll.Resume();
         OutputText.Text = "Ready";
         InputText.Text = "";
         OutputScroll.ScrollToEnd();
@@ -112,13 +116,13 @@ public partial class HudWindow : Window
     public void SetInput(string text)
     {
         InputText.Text = _sourceTrack.Update(text);
-        InputScroll.ScrollToEnd();
+        if (_sourceAutoScroll.IsFollowing) InputScroll.ScrollToEnd();
     }
 
     public void SetOutput(string text)
     {
         OutputText.Text = _translationTrack.Update(text);
-        OutputScroll.ScrollToEnd();
+        if (_translationAutoScroll.IsFollowing) OutputScroll.ScrollToEnd();
     }
     public void SetStats(int pending, int dropped) => StatsText.Text = $"Pending: {pending} / Dropped: {dropped}";
 
@@ -126,6 +130,38 @@ public partial class HudWindow : Window
     private void SettingsButton_OnClick(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();
     private void ExitButton_OnClick(object sender, RoutedEventArgs e) => ExitRequested?.Invoke();
     private void MinimizeButton_OnClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void TranscriptScroll_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (e.Delta <= 0) return;
+
+        if (ReferenceEquals(sender, OutputScroll)) _translationAutoScroll.Pause();
+        if (ReferenceEquals(sender, InputScroll)) _sourceAutoScroll.Pause();
+    }
+
+    private void TranscriptScroll_OnScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        var scrollViewer = (ScrollViewer)sender;
+        var state = ReferenceEquals(scrollViewer, OutputScroll)
+            ? _translationAutoScroll
+            : _sourceAutoScroll;
+        state.ObserveScroll(
+            scrollViewer.VerticalOffset,
+            scrollViewer.ScrollableHeight,
+            e.VerticalChange,
+            e.ExtentHeightChange);
+    }
+
+    private void HudWindow_OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+
+        _translationAutoScroll.Resume();
+        _sourceAutoScroll.Resume();
+        OutputScroll.ScrollToEnd();
+        InputScroll.ScrollToEnd();
+        e.Handled = true;
+    }
 
     private void DragBar_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {

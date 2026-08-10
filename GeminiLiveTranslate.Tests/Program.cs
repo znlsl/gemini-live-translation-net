@@ -2,6 +2,7 @@ using GeminiLiveTranslate.Audio;
 using GeminiLiveTranslate.Settings;
 using GeminiLiveTranslate.Soniox;
 using GeminiLiveTranslate.Translation;
+using GeminiLiveTranslate.Ui;
 
 var failures = new List<string>();
 Run("PCM chunker emits 100 ms chunks", PcmChunkerEmitsOneHundredMillisecondChunks);
@@ -13,6 +14,8 @@ Run("Soniox transcript accumulator replaces interim tokens", SonioxTranscriptAcc
 Run("Soniox transcript accumulator starts fresh after an endpoint", SonioxTranscriptAccumulatorStartsFreshAfterEndpoint);
 Run("Soniox endpoint and language are normalized", SonioxEndpointAndLanguageAreNormalized);
 Run("Settings create provider-specific session options", SettingsCreateProviderSpecificSessionOptions);
+Run("Auto-scroll pauses until manually returned to the bottom", AutoScrollPausesUntilReturnedToBottom);
+Run("Auto-scroll states remain independent and Enter can resume them", AutoScrollStatesRemainIndependentAndCanResume);
 
 if (failures.Count == 0)
 {
@@ -189,6 +192,35 @@ static void SettingsCreateProviderSpecificSessionOptions()
     Equal("soniox-key", options.ApiKey, "The selected provider must use its own credential.");
     Equal("stt-test", options.Model, "The selected provider must use its own model.");
     Equal("", options.SystemPrompt, "Gemini instructions must not leak into Soniox context semantics.");
+}
+
+static void AutoScrollPausesUntilReturnedToBottom()
+{
+    var state = new AutoScrollState();
+    True(state.IsFollowing, "A transcript pane must initially follow new content.");
+
+    state.ObserveScroll(verticalOffset: 40, scrollableHeight: 100, verticalChange: -10, extentHeightChange: 0);
+    True(!state.IsFollowing, "Scrolling upward must pause auto-scroll.");
+
+    state.ObserveScroll(verticalOffset: 40, scrollableHeight: 130, verticalChange: 0, extentHeightChange: 30);
+    True(!state.IsFollowing, "New content must not resume a paused pane.");
+
+    state.ObserveScroll(verticalOffset: 130, scrollableHeight: 130, verticalChange: 90, extentHeightChange: 0);
+    True(state.IsFollowing, "Manually returning to the bottom must resume auto-scroll.");
+}
+
+static void AutoScrollStatesRemainIndependentAndCanResume()
+{
+    var translation = new AutoScrollState();
+    var source = new AutoScrollState();
+
+    translation.Pause();
+    True(!translation.IsFollowing, "The pane receiving an upward wheel gesture must pause.");
+    True(source.IsFollowing, "Pausing one transcript pane must not pause the other.");
+
+    translation.Resume();
+    source.Resume();
+    True(translation.IsFollowing && source.IsFollowing, "An explicit resume must restore following for both panes.");
 }
 
 static LiveTranslationSessionOptions SessionOptions(string providerId) => new(
