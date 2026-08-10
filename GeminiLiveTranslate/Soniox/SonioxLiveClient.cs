@@ -3,9 +3,9 @@ using System.Text;
 using System.Text.Json;
 using GeminiLiveTranslate.Translation;
 
-namespace GeminiLiveTranslate.Gemini;
+namespace GeminiLiveTranslate.Soniox;
 
-internal sealed class GeminiLiveClient : ILiveTranslationAdapter
+internal sealed class SonioxLiveClient : ILiveTranslationAdapter
 {
     private const int MaxQueuedAudioChunks = 2;
     private static readonly TimeSpan MaxAudioChunkAge = TimeSpan.FromMilliseconds(250);
@@ -16,13 +16,17 @@ internal sealed class GeminiLiveClient : ILiveTranslationAdapter
     private int _sessionId;
 
     public TranslationProviderDescriptor Descriptor { get; } = new(
-        TranslationProviderIds.Gemini,
-        "Gemini Live",
-        new TranslationProviderCapabilities(SupportsTranslatedAudio: true));
+        TranslationProviderIds.Soniox,
+        "Soniox",
+        new TranslationProviderCapabilities(SupportsTranslatedAudio: false));
 
     public event Action<int, string>? InputTranscript;
     public event Action<int, string>? OutputTranscript;
-    public event Action<int, byte[]>? AudioReceived;
+    public event Action<int, byte[]>? AudioReceived
+    {
+        add { }
+        remove { }
+    }
     public event Action<int, string, string>? StatusChanged;
     public event Action<int>? Connected;
     public event Action<int, string>? Disconnected;
@@ -92,7 +96,7 @@ internal sealed class GeminiLiveClient : ILiveTranslationAdapter
         {
             try
             {
-                StatusChanged?.Invoke(sessionId, "connecting", "Connecting to Gemini Live...");
+                StatusChanged?.Invoke(sessionId, "connecting", "Connecting to Soniox...");
                 using var socket = RealtimeWebSocket.Create(options.ProxyUrl);
                 lock (_gate)
                 {
@@ -101,9 +105,10 @@ internal sealed class GeminiLiveClient : ILiveTranslationAdapter
                     audioBuffer.Clear();
                 }
 
-                await socket.ConnectAsync(BuildUri(options), token);
-                await SendSetupAsync(socket, options, token);
-                await WaitForSetupAsync(socket, sessionId, token);
+                await socket.ConnectAsync(BuildUri(options.Endpoint), token);
+                await SendConfigAsync(socket, options, token);
+                StatusChanged?.Invoke(sessionId, "connected", "Connected to Soniox");
+
                 using (var senderCts = CancellationTokenSource.CreateLinkedTokenSource(token))
                 {
                     var senderTask = Task.Run(
@@ -142,7 +147,7 @@ internal sealed class GeminiLiveClient : ILiveTranslationAdapter
             break;
         }
 
-        Disconnected?.Invoke(sessionId, token.IsCancellationRequested ? "" : "Session ended");
+        Disconnected?.Invoke(sessionId, token.IsCancellationRequested ? "" : "Soniox session ended");
     }
 
     private async Task SendAudioLoopAsync(
@@ -158,19 +163,7 @@ internal sealed class GeminiLiveClient : ILiveTranslationAdapter
                 await audioBuffer.WaitForDataAsync(token);
                 while (audioBuffer.TryTakeFresh(out var pcm16))
                 {
-                    var payload = Convert.ToBase64String(pcm16);
-                    var json = JsonSerializer.Serialize(new
-                    {
-                        realtimeInput = new
-                        {
-                            audio = new
-                            {
-                                data = payload,
-                                mimeType = "audio/pcm;rate=16000"
-                            }
-                        }
-                    });
-                    await socket.SendAsync(Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, true, token);
+                    await socket.SendAsync(pcm16, WebSocketMessageType.Binary, true, token);
                     StatsChanged?.Invoke(sessionId, audioBuffer.PendingCount, audioBuffer.DroppedCount);
                 }
                 StatsChanged?.Invoke(sessionId, audioBuffer.PendingCount, audioBuffer.DroppedCount);
@@ -187,123 +180,95 @@ internal sealed class GeminiLiveClient : ILiveTranslationAdapter
         }
     }
 
-    internal static Uri BuildUri(LiveTranslationSessionOptions options)
+    private static Task SendConfigAsync(
+        ClientWebSocket socket,
+        LiveTranslationSessionOptions options,
+        CancellationToken token)
     {
-        var baseUrl = options.Endpoint.TrimEnd('/');
-        if (baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            baseUrl = "wss://" + baseUrl["https://".Length..];
-        else if (baseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
-            baseUrl = "ws://" + baseUrl["http://".Length..];
-
-        return new Uri($"{baseUrl}/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key={Uri.EscapeDataString(options.ApiKey)}");
-    }
-
-    private static Task SendSetupAsync(ClientWebSocket socket, LiveTranslationSessionOptions options, CancellationToken token)
-    {
-        var setup = new Dictionary<string, object?>
+        var config = new
         {
-            ["model"] = options.Model,
-            ["generationConfig"] = new
+            api_key = options.ApiKey,
+            model = options.Model,
+            audio_format = "pcm_s16le",
+            sample_rate = 16000,
+            num_channels = 1,
+            enable_language_identification = true,
+            enable_endpoint_detection = true,
+            max_endpoint_delay_ms = 500,
+            translation = new
             {
-                responseModalities = new[] { "AUDIO" },
-                translationConfig = new
-                {
-                    targetLanguageCode = options.TargetLanguage,
-                    echoTargetLanguage = options.RequestTranslatedAudio
-                }
-            },
-            ["inputAudioTranscription"] = new { },
-            ["outputAudioTranscription"] = new { },
-            ["contextWindowCompression"] = new
-            {
-                triggerTokens = "0",
-                slidingWindow = new { targetTokens = "0" }
+                type = "one_way",
+                target_language = NormalizeTargetLanguage(options.TargetLanguage)
             }
         };
-        if (!string.IsNullOrWhiteSpace(options.SystemPrompt))
-        {
-            setup["systemInstruction"] = new { parts = new[] { new { text = options.SystemPrompt } } };
-        }
-
-        var json = JsonSerializer.Serialize(new { setup });
+        var json = JsonSerializer.Serialize(config);
         return socket.SendAsync(Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, true, token);
-    }
-
-    private async Task WaitForSetupAsync(ClientWebSocket socket, int sessionId, CancellationToken token)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeout.CancelAfter(TimeSpan.FromSeconds(12));
-        while (!timeout.Token.IsCancellationRequested)
-        {
-            var text = await RealtimeWebSocket.ReceiveTextAsync(socket, "Gemini", timeout.Token);
-            using var doc = JsonDocument.Parse(text);
-            var root = doc.RootElement;
-            ThrowIfGeminiError(root);
-            if (root.TryGetProperty("setupComplete", out _))
-            {
-                StatusChanged?.Invoke(sessionId, "connected", "Connected to Gemini Live");
-                return;
-            }
-            HandleRoot(sessionId, root);
-        }
-        throw new TimeoutException("Gemini Live setup timed out.");
     }
 
     private async Task ReceiveLoopAsync(ClientWebSocket socket, int sessionId, CancellationToken token)
     {
+        var transcripts = new SonioxTranscriptAccumulator();
         while (!token.IsCancellationRequested && socket.State == WebSocketState.Open)
         {
-            var text = await RealtimeWebSocket.ReceiveTextAsync(socket, "Gemini", token);
+            var text = await RealtimeWebSocket.ReceiveTextAsync(socket, "Soniox", token);
             using var doc = JsonDocument.Parse(text);
             var root = doc.RootElement;
-            ThrowIfGeminiError(root);
-            HandleRoot(sessionId, root);
+            ThrowIfSonioxError(root);
+            HandleRoot(sessionId, root, transcripts);
+            if (root.TryGetProperty("finished", out var finished) && finished.ValueKind == JsonValueKind.True) return;
         }
     }
 
-    private void HandleRoot(int sessionId, JsonElement root)
+    private void HandleRoot(int sessionId, JsonElement root, SonioxTranscriptAccumulator transcripts)
     {
-        if (!root.TryGetProperty("serverContent", out var content)) return;
+        if (!root.TryGetProperty("tokens", out var tokens) || tokens.ValueKind != JsonValueKind.Array) return;
 
-        if (content.TryGetProperty("inputTranscription", out var input) &&
-            input.TryGetProperty("text", out var inputText))
+        var parsed = new List<SonioxToken>();
+        foreach (var token in tokens.EnumerateArray())
         {
-            InputTranscript?.Invoke(sessionId, inputText.GetString() ?? "");
+            if (!token.TryGetProperty("text", out var textElement)) continue;
+            var text = textElement.GetString();
+            if (string.IsNullOrEmpty(text)) continue;
+            var isFinal = token.TryGetProperty("is_final", out var finalElement) && finalElement.ValueKind == JsonValueKind.True;
+            var status = token.TryGetProperty("translation_status", out var statusElement)
+                ? statusElement.GetString() ?? "none"
+                : "none";
+            parsed.Add(new SonioxToken(text, isFinal, status));
         }
 
-        if (content.TryGetProperty("outputTranscription", out var output) &&
-            output.TryGetProperty("text", out var outputText))
-        {
-            OutputTranscript?.Invoke(sessionId, outputText.GetString() ?? "");
-        }
-
-        if (!content.TryGetProperty("modelTurn", out var modelTurn) ||
-            !modelTurn.TryGetProperty("parts", out var parts) ||
-            parts.ValueKind != JsonValueKind.Array)
-        {
-            return;
-        }
-
-        foreach (var part in parts.EnumerateArray())
-        {
-            if (part.TryGetProperty("text", out var text))
-            {
-                OutputTranscript?.Invoke(sessionId, text.GetString() ?? "");
-            }
-            if (part.TryGetProperty("inlineData", out var inlineData) &&
-                inlineData.TryGetProperty("data", out var audioData))
-            {
-                var data = audioData.GetString();
-                if (!string.IsNullOrEmpty(data)) AudioReceived?.Invoke(sessionId, Convert.FromBase64String(data));
-            }
-        }
+        var update = transcripts.Apply(parsed);
+        if (update.InputText is not null) InputTranscript?.Invoke(sessionId, update.InputText);
+        if (update.OutputText is not null) OutputTranscript?.Invoke(sessionId, update.OutputText);
     }
 
-    private static void ThrowIfGeminiError(JsonElement root)
+    private static void ThrowIfSonioxError(JsonElement root)
     {
-        if (!root.TryGetProperty("error", out var error)) return;
-        var message = error.TryGetProperty("message", out var m) ? m.GetString() : "Unknown Gemini error";
-        throw new InvalidOperationException(message);
+        if (!root.TryGetProperty("error_code", out var code) || code.ValueKind == JsonValueKind.Null) return;
+        var message = root.TryGetProperty("error_message", out var messageElement)
+            ? messageElement.GetString()
+            : "Unknown Soniox error";
+        var type = root.TryGetProperty("error_type", out var typeElement) ? typeElement.GetString() : null;
+        throw new InvalidOperationException(string.IsNullOrWhiteSpace(type) ? message : $"{message} ({type})");
+    }
+
+    internal static Uri BuildUri(string endpoint)
+    {
+        var value = endpoint.Trim();
+        if (value.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            value = "wss://" + value["https://".Length..];
+        else if (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            value = "ws://" + value["http://".Length..];
+
+        var builder = new UriBuilder(value);
+        if (string.IsNullOrWhiteSpace(builder.Path) || builder.Path == "/") builder.Path = "/transcribe-websocket";
+        return builder.Uri;
+    }
+
+    internal static string NormalizeTargetLanguage(string language)
+    {
+        var normalized = language.Trim().Replace('_', '-');
+        var separator = normalized.IndexOf('-');
+        return (separator > 0 ? normalized[..separator] : normalized).ToLowerInvariant();
     }
 
     public ValueTask DisposeAsync()

@@ -1,6 +1,11 @@
 # Gemini Live Translate .NET
 
-Windows 11 desktop client for Gemini Live Translate. It captures system audio or a microphone, sends 16 kHz PCM16 audio to Gemini Live, and displays live source and translated subtitles in a floating HUD.
+Windows 11 desktop client for realtime speech translation. It captures system audio or a microphone, sends 16 kHz PCM16 audio to a selected Translation Provider, and displays live source and translated subtitles in a floating HUD.
+
+Supported providers:
+
+- Gemini Live: translated subtitles and optional translated audio playback.
+- Soniox: low-latency translated subtitles. Soniox TTS playback is planned but not enabled yet.
 
 ## Download and Run
 
@@ -22,9 +27,12 @@ Do not run the executable directly from inside the ZIP preview window. Extract t
 
 1. Run `GeminiLiveTranslate.exe`.
 2. Open `Settings`.
-3. Enter a Gemini API key.
-4. Choose the target language and audio source.
-5. Click `Start`.
+3. Choose `Gemini Live` or `Soniox` as the Translation Provider.
+4. Enter the API key for the selected provider.
+5. Choose the target language and audio source.
+6. Click `Start`.
+
+Changing the provider while translation is running stops the current session and starts a new session with the selected provider.
 
 Settings are saved under:
 

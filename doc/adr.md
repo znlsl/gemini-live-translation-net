@@ -62,3 +62,25 @@ Reasons:
 Follow-up:
 
 - API keys are currently stored in JSON to match the Python app behavior. Replace with Windows DPAPI or Credential Manager before distribution.
+
+## ADR-005: Swappable live translation providers
+
+Status: accepted
+
+Decision: route live translation through a deep `LiveTranslationClient` Module with an internal provider seam. Gemini Live and Soniox are separate Adapters at that seam.
+
+Reasons:
+
+- Provider switching changes authentication, WebSocket protocol, model configuration, transcript semantics, reconnect behavior, and translated-audio support; it is more than a model-name change.
+- A common session Interface keeps provider knowledge out of `AppController` and gives tests one seam for selection, session identity, audio forwarding, and capability checks.
+- Two Adapters make the seam real: Gemini preserves the raw `ClientWebSocket` decision in ADR-003, while Soniox uses its own raw WebSocket protocol.
+
+Capability decision:
+
+- Translated audio is optional. Gemini advertises it; the initial Soniox Adapter provides low-latency source and translated subtitles only.
+- Soniox speech-to-speech translation requires a second TTS WebSocket and can be added behind the same provider seam later.
+
+Operational decision:
+
+- Switching providers stops the current session and starts a new one.
+- Do not silently fail over between providers because that changes billing, privacy, and output semantics.

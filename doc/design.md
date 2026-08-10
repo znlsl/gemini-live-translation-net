@@ -5,20 +5,21 @@
 ```text
 WPF HUD / tray
   -> AppController
-  -> GeminiLiveClient
-  -> ClientWebSocket
-  -> Gemini Live API
+  -> LiveTranslationClient
+  -> selected provider Adapter
+     -> Gemini Live WebSocket
+     -> Soniox STT/translation WebSocket
 
 AudioCaptureService
   -> NAudio WASAPI loopback or mic
   -> Pcm16Processor
   -> Pcm16Chunker
-  -> GeminiLiveClient.SendAudio()
+  -> LiveTranslationClient.SendAudio()
 
-GeminiLiveClient
+LiveTranslationClient
   -> transcript events
   -> HUD text
-  -> output PCM16 audio
+  -> optional translated PCM16 audio
   -> AudioPlaybackService
 ```
 
@@ -27,18 +28,24 @@ GeminiLiveClient
 ### `Ui`
 
 - `HudWindow`: transparent topmost subtitle window.
-- `SettingsWindow`: editable API, model, language, proxy, audio, and HUD settings.
-- `AppController`: orchestrates tray menu, start/stop lifecycle, settings persistence, audio capture, playback, and Gemini events.
+- `SettingsWindow`: selects a Translation Provider and edits provider, language, proxy, audio, and HUD settings.
+- `AppController`: orchestrates tray menu, start/stop lifecycle, settings persistence, audio capture, playback, and provider-neutral translation events.
 
 ### `Settings`
 
 - `AppSettings`: serializable runtime settings.
 - `SettingsStore`: JSON load/save under `%APPDATA%`.
 
+### `Translation`
+
+- `LiveTranslationClient`: deep Module that selects one Adapter, owns cross-provider session identity, routes events, and exposes provider capabilities.
+- `ILiveTranslationAdapter`: internal provider seam used by the Gemini and Soniox Adapters.
+- `RealtimeAudioBuffer`: shared bounded low-latency queue that drops old audio under backpressure.
+- `RealtimeWebSocket`: shared WebSocket proxy, keepalive, and text-frame handling.
+
 ### `Gemini`
 
-- `GeminiLiveClient`: stateful WebSocket client for Gemini Live Translate.
-- `GeminiSessionOptions`: immutable session configuration.
+- `GeminiLiveClient`: Gemini Adapter for the live translation provider seam.
 
 Responsibilities:
 
@@ -49,6 +56,21 @@ Responsibilities:
 - Parse returned PCM16 audio.
 - Reconnect with bounded exponential delay.
 - Drop audio chunks under send backpressure.
+
+### `Soniox`
+
+- `SonioxLiveClient`: Soniox realtime STT/translation Adapter.
+- `SonioxTranscriptAccumulator`: merges final and revisable tokens into stable source and translated text streams.
+
+Responsibilities:
+
+- Send raw 16 kHz mono PCM16 as binary WebSocket frames.
+- Configure one-way translation with endpoint detection and a 500 ms maximum endpoint delay.
+- Separate original and translated tokens using `translation_status`.
+- Preserve final tokens while replacing non-final tokens as Soniox revisions arrive.
+- Reconnect with bounded exponential delay and share the same realtime backpressure policy as Gemini.
+
+Translated Soniox audio is not implemented yet. It requires a second TTS WebSocket that consumes translation tokens and publishes 24 kHz PCM16 behind the existing optional-audio capability.
 
 ### `Audio`
 
@@ -105,7 +127,7 @@ The preferred timestamps are the speech segment start and end times provided by 
 ### Proposed runtime flow
 
 ```text
-GeminiLiveClient final translation event
+LiveTranslationClient final translation event
   -> TranslationSegment
   -> SubtitleSessionManager
   -> SrtWriter for TargetLanguage
@@ -117,7 +139,8 @@ The export feature should be controlled by settings, expose the output directory
 ## Current limitations
 
 - Subtitle export is designed above but not implemented yet.
-- No DPAPI protection for API keys yet.
+- Soniox translated audio playback is not implemented yet; the Soniox Adapter currently provides source and translated subtitles.
+- No DPAPI protection for provider API keys yet.
 - Resampling uses linear interpolation. This is buildable and low-cost, but not final quality.
 - Audio device selection is minimal: default system loopback or microphone device number.
 - No installer; publish output is the first distribution unit.

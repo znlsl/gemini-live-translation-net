@@ -1,10 +1,10 @@
 using System.Drawing;
-using System.Windows.Threading;
 using System.Windows;
 using System.Windows.Forms;
+using System.Windows.Threading;
 using GeminiLiveTranslate.Audio;
-using GeminiLiveTranslate.Gemini;
 using GeminiLiveTranslate.Settings;
+using GeminiLiveTranslate.Translation;
 using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
 
@@ -15,7 +15,7 @@ public sealed class AppController : IDisposable
     private readonly SettingsStore _settingsStore;
     private readonly AppSettings _settings;
     private readonly HudWindow _hud;
-    private readonly GeminiLiveClient _gemini;
+    private readonly LiveTranslationClient _translator;
     private readonly AudioCaptureService _capture;
     private readonly AudioPlaybackService _player;
     private NotifyIcon? _tray;
@@ -32,14 +32,14 @@ public sealed class AppController : IDisposable
         SettingsStore settingsStore,
         AppSettings settings,
         HudWindow hud,
-        GeminiLiveClient gemini,
+        LiveTranslationClient translator,
         AudioCaptureService capture,
         AudioPlaybackService player)
     {
         _settingsStore = settingsStore;
         _settings = settings;
         _hud = hud;
-        _gemini = gemini;
+        _translator = translator;
         _capture = capture;
         _player = player;
         _subtitleTimer = new DispatcherTimer
@@ -55,7 +55,7 @@ public sealed class AppController : IDisposable
         _tray = new NotifyIcon
         {
             Icon = SystemIcons.Application,
-            Text = "Gemini Live Translate",
+            Text = "Live Translate",
             Visible = true,
             ContextMenuStrip = BuildTrayMenu()
         };
@@ -80,33 +80,33 @@ public sealed class AppController : IDisposable
         _hud.SettingsRequested += OpenSettings;
         _hud.ExitRequested += Shutdown;
 
-        _gemini.InputTranscript += (sessionId, text) => OnUi(() =>
+        _translator.InputTranscript += (sessionId, text) => OnUi(() =>
         {
             if (sessionId == _activeSessionId) QueueSubtitleUpdate(input: text, output: null);
         });
-        _gemini.OutputTranscript += (sessionId, text) => OnUi(() =>
+        _translator.OutputTranscript += (sessionId, text) => OnUi(() =>
         {
             if (sessionId == _activeSessionId) QueueSubtitleUpdate(input: null, output: text);
         });
-        _gemini.AudioReceived += (sessionId, data) =>
+        _translator.AudioReceived += (sessionId, data) =>
         {
             if (sessionId == _activeSessionId) _player.EnqueuePcm16(data);
         };
-        _gemini.StatusChanged += (sessionId, kind, message) => OnUi(() =>
+        _translator.StatusChanged += (sessionId, kind, message) => OnUi(() =>
         {
             if (sessionId == _activeSessionId) _hud.SetStatus(message, kind);
         });
-        _gemini.StatsChanged += (sessionId, pending, dropped) => OnUi(() =>
+        _translator.StatsChanged += (sessionId, pending, dropped) => OnUi(() =>
         {
             if (sessionId == _activeSessionId) _hud.SetStats(pending, dropped);
         });
-        _gemini.Connected += sessionId => OnUi(() =>
+        _translator.Connected += sessionId => OnUi(() =>
         {
             if (sessionId != _activeSessionId || !_running) return;
-            _hud.SetStatus("Connected", "connected");
+            _hud.SetStatus($"Connected to {_settings.ActiveProviderDisplayName}", "connected");
             StartCapture(sessionId);
         });
-        _gemini.Disconnected += (sessionId, reason) => OnUi(() =>
+        _translator.Disconnected += (sessionId, reason) => OnUi(() =>
         {
             if (sessionId != _activeSessionId) return;
             _capture.Stop();
@@ -125,40 +125,41 @@ public sealed class AppController : IDisposable
 
     private void Start()
     {
-        if (string.IsNullOrWhiteSpace(_settings.ApiKey))
+        _settings.Normalize();
+        if (string.IsNullOrWhiteSpace(_settings.ActiveApiKey))
         {
-            MessageBox.Show("Set a Gemini API key first.", "Gemini Live Translate", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(
+                $"Set a {_settings.ActiveProviderDisplayName} API key first.",
+                "Live Translate",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
             OpenSettings();
             return;
         }
 
-        var echoTargetLanguage = _settings.EchoTargetLanguage && _settings.AudioSource != "both";
-        if (echoTargetLanguage) _player.Start(_settings.PlaybackVolume);
+        var capabilities = _translator.GetCapabilities(_settings.TranslationProvider);
+        var playTranslatedAudio = _settings.EchoTargetLanguage &&
+                                  _settings.AudioSource != "both" &&
+                                  capabilities.SupportsTranslatedAudio;
+        if (playTranslatedAudio) _player.Start(_settings.PlaybackVolume);
         ClearPendingSubtitles();
         _hud.ClearTranscripts();
-        _activeSessionId = _gemini.Start(new GeminiSessionOptions(
-            _settings.ApiKey,
-            _settings.ApiBase,
-            _settings.ProxyUrl,
-            _settings.GeminiModel,
-            _settings.TargetLanguage,
-            _settings.SystemPrompt,
-            echoTargetLanguage));
+        _activeSessionId = _translator.Start(_settings.CreateSessionOptions(playTranslatedAudio));
         _running = true;
         _hud.SetRunning(true);
-        _hud.SetStatus("Connecting...", "connecting");
+        _hud.SetStatus($"Connecting to {_settings.ActiveProviderDisplayName}...", "connecting");
     }
 
     private void StartCapture(int sessionId)
     {
         try
         {
-            _capture.Start(_settings.AudioSource, _settings.AudioDeviceNumber, bytes => _gemini.SendAudio(bytes, sessionId));
+            _capture.Start(_settings.AudioSource, _settings.AudioDeviceNumber, bytes => _translator.SendAudio(bytes, sessionId));
         }
         catch (Exception ex)
         {
             Stop();
-            MessageBox.Show($"Audio capture failed: {ex.Message}", "Gemini Live Translate", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Audio capture failed: {ex.Message}", "Live Translate", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -168,7 +169,7 @@ public sealed class AppController : IDisposable
         ClearPendingSubtitles();
         _capture.Stop();
         _player.Stop();
-        _gemini.Stop();
+        _translator.Stop();
         _hud.SetRunning(false);
         _hud.SetStatus("Stopped", "idle");
     }
@@ -272,6 +273,6 @@ public sealed class AppController : IDisposable
         _tray?.Dispose();
         _capture.Dispose();
         _player.Dispose();
-        _gemini.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        _translator.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 }

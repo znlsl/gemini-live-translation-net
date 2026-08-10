@@ -34,6 +34,9 @@
 - [x] Add GitHub Actions workflow for automatic Windows exe artifacts.
 - [x] Create GitHub Release automatically when pushing version tags.
 - [x] Add README instructions for release ZIP usage.
+- [x] Add a live translation provider seam with Gemini and Soniox Adapters.
+- [x] Add Soniox low-latency source and translated subtitle streaming.
+- [x] Add provider selection, provider-specific credentials, and capability-aware playback settings.
 - [ ] Run live smoke test with microphone.
 - [ ] Run live smoke test with WASAPI loopback.
 - [ ] Add DPAPI/Credential Manager storage for API key.

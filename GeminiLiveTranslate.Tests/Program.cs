@@ -1,19 +1,26 @@
 using GeminiLiveTranslate.Audio;
-using GeminiLiveTranslate.Gemini;
+using GeminiLiveTranslate.Settings;
+using GeminiLiveTranslate.Soniox;
+using GeminiLiveTranslate.Translation;
 
 var failures = new List<string>();
 Run("PCM chunker emits 100 ms chunks", PcmChunkerEmitsOneHundredMillisecondChunks);
 Run("Dual-source mixer does not wait for a silent source", MixerDoesNotWaitForSilentSource);
 Run("Realtime audio buffer drops oldest backlog", AudioBufferDropsOldestBacklog);
 Run("Realtime audio buffer drops stale chunks", AudioBufferDropsStaleChunks);
+Run("Translation client selects and switches providers", TranslationClientSelectsAndSwitchesProviders);
+Run("Soniox transcript accumulator replaces interim tokens", SonioxTranscriptAccumulatorReplacesInterimTokens);
+Run("Soniox transcript accumulator starts fresh after an endpoint", SonioxTranscriptAccumulatorStartsFreshAfterEndpoint);
+Run("Soniox endpoint and language are normalized", SonioxEndpointAndLanguageAreNormalized);
+Run("Settings create provider-specific session options", SettingsCreateProviderSpecificSessionOptions);
 
 if (failures.Count == 0)
 {
-    Console.WriteLine("All latency regression tests passed.");
+    Console.WriteLine("All regression tests passed.");
     return 0;
 }
 
-Console.Error.WriteLine($"{failures.Count} latency regression test(s) failed:");
+Console.Error.WriteLine($"{failures.Count} regression test(s) failed:");
 foreach (var failure in failures) Console.Error.WriteLine($"- {failure}");
 return 1;
 
@@ -33,7 +40,7 @@ void Run(string name, Action test)
 static void PcmChunkerEmitsOneHundredMillisecondChunks()
 {
     var chunks = new List<byte[]>();
-    Equal(3200, AudioCaptureService.ChunkSize, "Capture must use Gemini's recommended 100 ms chunk size.");
+    Equal(3200, AudioCaptureService.ChunkSize, "Capture must use the recommended 100 ms chunk size.");
     var chunker = new Pcm16Chunker(AudioCaptureService.ChunkSize, chunks.Add);
 
     chunker.Append(new byte[3199]);
@@ -86,6 +93,114 @@ static void AudioBufferDropsStaleChunks()
     Equal(1, buffer.DroppedCount, "Expired audio must be included in dropped statistics.");
 }
 
+static void TranslationClientSelectsAndSwitchesProviders()
+{
+    var gemini = new FakeTranslationAdapter(TranslationProviderIds.Gemini, supportsTranslatedAudio: true);
+    var soniox = new FakeTranslationAdapter(TranslationProviderIds.Soniox, supportsTranslatedAudio: false);
+    var client = new LiveTranslationClient([gemini, soniox]);
+    try
+    {
+        var geminiSession = client.Start(SessionOptions(TranslationProviderIds.Gemini));
+        client.SendAudio([1], geminiSession);
+        Equal(1, gemini.StartCount, "Gemini must receive the first session.");
+        Equal(1, gemini.AudioCount, "The active Adapter must receive audio.");
+
+        var sonioxSession = client.Start(SessionOptions(TranslationProviderIds.Soniox));
+        client.SendAudio([2], geminiSession);
+        client.SendAudio([3], sonioxSession);
+        Equal(1, gemini.StopCount, "Switching providers must stop the previous Adapter.");
+        Equal(1, soniox.StartCount, "Soniox must receive the replacement session.");
+        Equal(1, soniox.AudioCount, "Stale session audio must be ignored and current audio must be forwarded.");
+        True(client.GetCapabilities(TranslationProviderIds.Gemini).SupportsTranslatedAudio, "Gemini must advertise translated audio.");
+        True(!client.GetCapabilities(TranslationProviderIds.Soniox).SupportsTranslatedAudio, "Soniox STT must not advertise TTS yet.");
+    }
+    finally
+    {
+        client.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+}
+
+static void SonioxTranscriptAccumulatorReplacesInterimTokens()
+{
+    var accumulator = new SonioxTranscriptAccumulator();
+    var interim = accumulator.Apply([
+        new SonioxToken("Hel", false, "original"),
+        new SonioxToken("你", false, "translation")
+    ]);
+    Equal("Hel", interim.InputText!, "Original interim text must stream immediately.");
+    Equal("你", interim.OutputText!, "Translated interim text must stream immediately.");
+
+    var finalized = accumulator.Apply([
+        new SonioxToken("Hello", true, "original"),
+        new SonioxToken("你好", true, "translation")
+    ]);
+    Equal("Hello", finalized.InputText!, "Final original tokens must replace the previous interim view.");
+    Equal("你好", finalized.OutputText!, "Final translation tokens must replace the previous interim view.");
+
+    var next = accumulator.Apply([new SonioxToken(" world", false, "original")]);
+    Equal("Hello world", next.InputText!, "New interim tokens must follow committed tokens.");
+    True(next.OutputText is null, "A response without translated tokens must not overwrite the translated HUD.");
+}
+
+static void SonioxTranscriptAccumulatorStartsFreshAfterEndpoint()
+{
+    var accumulator = new SonioxTranscriptAccumulator();
+    var first = accumulator.Apply([
+        new SonioxToken("First sentence.", true, "original"),
+        new SonioxToken("第一句。", true, "translation"),
+        new SonioxToken("<end>", true, "translation")
+    ]);
+    Equal("First sentence.", first.InputText!, "The completed source utterance must be emitted once.");
+    Equal("第一句。", first.OutputText!, "The completed translated utterance must be emitted once.");
+
+    var second = accumulator.Apply([
+        new SonioxToken("Second", false, "original"),
+        new SonioxToken("第二句", false, "translation")
+    ]);
+    Equal("Second", second.InputText!, "A new source utterance must not include previous final text.");
+    Equal("第二句", second.OutputText!, "A new translation must not include previous final text.");
+}
+
+static void SonioxEndpointAndLanguageAreNormalized()
+{
+    Equal(
+        "wss://stt-rt.soniox.com/transcribe-websocket",
+        SonioxLiveClient.BuildUri("https://stt-rt.soniox.com").AbsoluteUri,
+        "An HTTPS Soniox host must become the realtime WebSocket endpoint.");
+    Equal("zh", SonioxLiveClient.NormalizeTargetLanguage("zh-CN"), "Soniox uses the base Chinese language code.");
+    Equal("pt", SonioxLiveClient.NormalizeTargetLanguage("pt_BR"), "Regional tags must normalize to Soniox base language codes.");
+}
+
+static void SettingsCreateProviderSpecificSessionOptions()
+{
+    var settings = new AppSettings
+    {
+        TranslationProvider = TranslationProviderIds.Soniox,
+        ApiKey = "gemini-key",
+        SonioxApiKey = "soniox-key",
+        SonioxEndpoint = "wss://example.test/transcribe-websocket",
+        SonioxModel = "stt-test",
+        SystemPrompt = "Gemini only"
+    };
+    settings.Normalize();
+    var options = settings.CreateSessionOptions(requestTranslatedAudio: false);
+
+    Equal(TranslationProviderIds.Soniox, options.ProviderId, "The selected provider must reach the session Interface.");
+    Equal("soniox-key", options.ApiKey, "The selected provider must use its own credential.");
+    Equal("stt-test", options.Model, "The selected provider must use its own model.");
+    Equal("", options.SystemPrompt, "Gemini instructions must not leak into Soniox context semantics.");
+}
+
+static LiveTranslationSessionOptions SessionOptions(string providerId) => new(
+    providerId,
+    "key",
+    "wss://example.test",
+    "",
+    "model",
+    "zh-CN",
+    "",
+    false);
+
 static void Equal<T>(T expected, T actual, string message) where T : notnull
 {
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
@@ -107,3 +222,33 @@ sealed class ManualTimeProvider : TimeProvider
     public void Advance(TimeSpan duration) => _timestamp += duration.Ticks;
 }
 
+sealed class FakeTranslationAdapter : ILiveTranslationAdapter
+{
+    public FakeTranslationAdapter(string id, bool supportsTranslatedAudio)
+    {
+        Descriptor = new TranslationProviderDescriptor(
+            id,
+            id,
+            new TranslationProviderCapabilities(supportsTranslatedAudio));
+    }
+
+    public TranslationProviderDescriptor Descriptor { get; }
+    public int StartCount { get; private set; }
+    public int StopCount { get; private set; }
+    public int AudioCount { get; private set; }
+
+#pragma warning disable CS0067
+    public event Action<int, string>? InputTranscript;
+    public event Action<int, string>? OutputTranscript;
+    public event Action<int, byte[]>? AudioReceived;
+    public event Action<int, string, string>? StatusChanged;
+    public event Action<int>? Connected;
+    public event Action<int, string>? Disconnected;
+    public event Action<int, int, int>? StatsChanged;
+#pragma warning restore CS0067
+
+    public void Start(int sessionId, LiveTranslationSessionOptions options) => StartCount++;
+    public void Stop() => StopCount++;
+    public void SendAudio(byte[] pcm16, int sessionId) => AudioCount++;
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

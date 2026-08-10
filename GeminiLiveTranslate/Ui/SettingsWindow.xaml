@@ -1,9 +1,9 @@
 <Window x:Class="GeminiLiveTranslate.Ui.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Gemini Live Translate Settings"
-        Width="560"
-        Height="620"
+        Title="Live Translate Settings"
+        Width="580"
+        Height="700"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize">
   <Grid Margin="18">
@@ -13,11 +13,41 @@
     </Grid.RowDefinitions>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
       <StackPanel>
-        <TextBlock Text="API Key" />
-        <PasswordBox x:Name="ApiKeyBox" Margin="0,4,0,12" />
+        <TextBlock Text="Translation Provider" />
+        <ComboBox x:Name="ProviderBox" Margin="0,4,0,12" SelectionChanged="ProviderBox_OnSelectionChanged">
+          <ComboBoxItem Tag="gemini" Content="Gemini Live" />
+          <ComboBoxItem Tag="soniox" Content="Soniox" />
+        </ComboBox>
 
-        <TextBlock Text="API Base URL" />
-        <TextBox x:Name="ApiBaseBox" Margin="0,4,0,12" />
+        <StackPanel x:Name="GeminiProviderPanel">
+          <TextBlock Text="Gemini API Key" />
+          <PasswordBox x:Name="ApiKeyBox" Margin="0,4,0,12" />
+
+          <TextBlock Text="Gemini API Base URL" />
+          <TextBox x:Name="ApiBaseBox" Margin="0,4,0,12" />
+
+          <TextBlock Text="Gemini Model" />
+          <TextBox x:Name="ModelBox" Margin="0,4,0,12" />
+
+          <TextBlock Text="Gemini System Prompt" />
+          <TextBox x:Name="PromptBox" Margin="0,4,0,12" Height="88" TextWrapping="Wrap" AcceptsReturn="True" />
+        </StackPanel>
+
+        <StackPanel x:Name="SonioxProviderPanel" Visibility="Collapsed">
+          <TextBlock Text="Soniox API Key" />
+          <PasswordBox x:Name="SonioxApiKeyBox" Margin="0,4,0,12" />
+
+          <TextBlock Text="Soniox WebSocket Endpoint" />
+          <TextBox x:Name="SonioxEndpointBox" Margin="0,4,0,12" />
+
+          <TextBlock Text="Soniox Model" />
+          <TextBox x:Name="SonioxModelBox" Margin="0,4,0,6" />
+          <TextBlock Text="Soniox currently provides low-latency translated subtitles. Translated audio playback will be enabled when the TTS Adapter is added."
+                     Foreground="#64748B"
+                     TextWrapping="Wrap"
+                     FontSize="12"
+                     Margin="0,0,0,12" />
+        </StackPanel>
 
         <TextBlock Text="Proxy URL" />
         <TextBox x:Name="ProxyBox" Margin="0,4,0,12" />
@@ -26,9 +56,6 @@
                    TextWrapping="Wrap"
                    FontSize="12"
                    Margin="0,-8,0,12" />
-
-        <TextBlock Text="Model" />
-        <TextBox x:Name="ModelBox" Margin="0,4,0,12" />
 
         <TextBlock Text="Target Language" />
         <ComboBox x:Name="LanguageBox" Margin="0,4,0,12">
@@ -60,7 +87,12 @@
         <TextBlock Text="Mic Device Number (-1 uses default)" />
         <TextBox x:Name="DeviceBox" Margin="0,4,0,12" />
 
-        <CheckBox x:Name="EchoBox" Content="Play translated interpretation audio" Margin="0,0,0,10" />
+        <CheckBox x:Name="EchoBox" Content="Play translated interpretation audio" Margin="0,0,0,4" />
+        <TextBlock x:Name="ProviderCapabilityText"
+                   Foreground="#64748B"
+                   TextWrapping="Wrap"
+                   FontSize="12"
+                   Margin="20,0,0,10" />
         <CheckBox x:Name="ShowOriginalBox" Content="Show source transcript" Margin="0,0,0,12" />
 
         <TextBlock Text="Playback Volume (0.0 - 1.0)" />
@@ -78,9 +110,6 @@
 
         <TextBlock Text="HUD Background Opacity (0.2 - 0.95)" />
         <TextBox x:Name="OpacityBox" Margin="0,4,0,12" />
-
-        <TextBlock Text="System Prompt" />
-        <TextBox x:Name="PromptBox" Margin="0,4,0,12" Height="88" TextWrapping="Wrap" AcceptsReturn="True" />
       </StackPanel>
     </ScrollViewer>
     <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">

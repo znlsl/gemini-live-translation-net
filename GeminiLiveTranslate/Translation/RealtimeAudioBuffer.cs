@@ -1,4 +1,4 @@
-namespace GeminiLiveTranslate.Gemini;
+namespace GeminiLiveTranslate.Translation;
 
 internal sealed class RealtimeAudioBuffer
 {
