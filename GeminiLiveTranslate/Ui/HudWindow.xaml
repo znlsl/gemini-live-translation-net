@@ -57,6 +57,23 @@
         </ScrollViewer>
       </Grid>
       <TextBlock x:Name="StatsText" Grid.Row="2" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Text="Pending: 0 / Dropped: 0" />
+      <Thumb Grid.RowSpan="3"
+             Width="20"
+             Height="20"
+             Margin="-14,-14,0,0"
+             HorizontalAlignment="Left"
+             VerticalAlignment="Top"
+             Panel.ZIndex="100"
+             Background="Transparent"
+             Cursor="SizeNWSE"
+             ToolTip="Resize"
+             DragDelta="TopLeftResizeThumb_OnDragDelta">
+        <Thumb.Template>
+          <ControlTemplate TargetType="{x:Type Thumb}">
+            <Border Background="Transparent" />
+          </ControlTemplate>
+        </Thumb.Template>
+      </Thumb>
     </Grid>
   </Border>
 </Window>

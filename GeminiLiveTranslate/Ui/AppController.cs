@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Forms;
 using System.Windows.Threading;
 using GeminiLiveTranslate.Audio;
+using GeminiLiveTranslate.Diagnostics;
 using GeminiLiveTranslate.Settings;
 using GeminiLiveTranslate.Translation;
 using Application = System.Windows.Application;
@@ -62,7 +63,9 @@ public sealed class AppController : IDisposable
             ContextMenuStrip = BuildTrayMenu()
         };
         _tray.DoubleClick += (_, _) => ShowHud();
+        WindowSizeDiagnostics.Log("start-ui-before-show", _settings, _hud);
         _hud.Show();
+        WindowSizeDiagnostics.Log("start-ui-after-show", _settings, _hud);
     }
 
     private ContextMenuStrip BuildTrayMenu()

@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Input;
+using GeminiLiveTranslate.Diagnostics;
 using GeminiLiveTranslate.Settings;
 using MediaColor = System.Windows.Media.Color;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
@@ -20,6 +21,7 @@ public partial class HudWindow : Window
     private readonly RollingTextTrack _sourceTrack = new();
     private readonly AutoScrollState _translationAutoScroll = new();
     private readonly AutoScrollState _sourceAutoScroll = new();
+    private bool _firstSizeChangedLogged;
 
     public event Action? ToggleRequested;
     public event Action? SettingsRequested;
@@ -28,18 +30,28 @@ public partial class HudWindow : Window
     public HudWindow(AppSettings settings)
     {
         _settings = settings;
+        SourceInitialized += HudWindow_OnSourceInitialized;
+        Loaded += HudWindow_OnLoaded;
+        ContentRendered += HudWindow_OnContentRendered;
+        SizeChanged += HudWindow_OnFirstSizeChanged;
+        WindowSizeDiagnostics.Log("hud-constructor-before-initialize", _settings, this);
         InitializeComponent();
+        WindowSizeDiagnostics.Log("hud-constructor-after-initialize", _settings, this);
         ApplySettings();
+        WindowSizeDiagnostics.Log("hud-constructor-after-apply-settings", _settings, this);
     }
 
     public void ApplySettings()
     {
+        WindowSizeDiagnostics.Log("apply-settings-before-normalize", _settings, this);
         _settings.Normalize();
         var workArea = SystemParameters.WorkArea;
         var width = _settings.Hud.Width;
         var height = _settings.Hud.Height;
+        var usedDefaults = false;
         if (width <= 0 || height <= 0)
         {
+            usedDefaults = true;
             width = workArea.Width / 3;
             height = workArea.Height / 4;
             _settings.Hud.Width = width;
@@ -48,6 +60,11 @@ public partial class HudWindow : Window
             _settings.Hud.Top = workArea.Top + (workArea.Height - height) / 2;
         }
 
+        WindowSizeDiagnostics.Log(
+            "apply-settings-before-window-assignment",
+            _settings,
+            this,
+            $"target=({width},{height}); usedDefaults={usedDefaults}");
         Width = width;
         Height = height;
         Left = _settings.Hud.Left;
@@ -59,6 +76,27 @@ public partial class HudWindow : Window
         LaneDivider.Visibility = _settings.ShowOriginal ? Visibility.Visible : Visibility.Collapsed;
         var opacity = (byte)(Math.Clamp(_settings.BackgroundOpacity, 0.2, 0.95) * 255);
         RootPanel.Background = new SolidColorBrush(MediaColor.FromArgb(opacity, 17, 24, 39));
+        WindowSizeDiagnostics.Log("apply-settings-complete", _settings, this);
+    }
+
+    private void HudWindow_OnSourceInitialized(object? sender, EventArgs e) =>
+        WindowSizeDiagnostics.Log("source-initialized", _settings, this);
+
+    private void HudWindow_OnLoaded(object sender, RoutedEventArgs e) =>
+        WindowSizeDiagnostics.Log("loaded", _settings, this);
+
+    private void HudWindow_OnContentRendered(object? sender, EventArgs e) =>
+        WindowSizeDiagnostics.Log("content-rendered", _settings, this);
+
+    private void HudWindow_OnFirstSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_firstSizeChangedLogged) return;
+        _firstSizeChangedLogged = true;
+        WindowSizeDiagnostics.Log(
+            "first-size-changed",
+            _settings,
+            this,
+            $"previous=({e.PreviousSize.Width},{e.PreviousSize.Height}); new=({e.NewSize.Width},{e.NewSize.Height}); widthChanged={e.WidthChanged}; heightChanged={e.HeightChanged}");
     }
 
     private static void ApplyTextAppearance(TextBlock textBlock, TextAppearanceSettings appearance)
@@ -245,6 +283,28 @@ public partial class HudWindow : Window
         DragMove();
     }
 
+    private void TopLeftResizeThumb_OnDragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (WindowState != WindowState.Normal) return;
+
+        var right = Left + ActualWidth;
+        var bottom = Top + ActualHeight;
+        var width = ClampWidth(ActualWidth - e.HorizontalChange);
+        var height = ClampHeight(ActualHeight - e.VerticalChange);
+
+        Left = right - width;
+        Top = bottom - height;
+        Width = width;
+        Height = height;
+        e.Handled = true;
+    }
+
+    private double ClampWidth(double width) =>
+        Math.Clamp(width, Math.Max(MinWidth, SystemParameters.MinimumWindowWidth), MaxWidth);
+
+    private double ClampHeight(double height) =>
+        Math.Clamp(height, Math.Max(MinHeight, SystemParameters.MinimumWindowHeight), MaxHeight);
+
     private static bool IsInteractiveElement(DependencyObject? source)
     {
         while (source is not null)
@@ -252,6 +312,7 @@ public partial class HudWindow : Window
             if (source is System.Windows.Controls.Primitives.ButtonBase
                 or System.Windows.Controls.Primitives.TextBoxBase
                 or System.Windows.Controls.Primitives.ScrollBar
+                or System.Windows.Controls.Primitives.Thumb
                 or System.Windows.Controls.ComboBox
                 or System.Windows.Controls.PasswordBox)
             {
