@@ -46,6 +46,8 @@ public sealed class RollingTextTrack
 
     public string DisplayText => TrimToMaxLength(SoftJoin(string.Join(" ", _segments), _active));
 
+    public string ExportText => SoftJoin(string.Join(" ", _segments), _active);
+
     private void CommitActive()
     {
         var text = Normalize(_active);

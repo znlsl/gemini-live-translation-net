@@ -1,3 +1,5 @@
+using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -5,6 +7,9 @@ using System.Windows.Media;
 using System.Windows.Input;
 using GeminiLiveTranslate.Settings;
 using MediaColor = System.Windows.Media.Color;
+using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
+using WpfClipboard = System.Windows.Clipboard;
+using WpfMessageBox = System.Windows.MessageBox;
 
 namespace GeminiLiveTranslate.Ui;
 
@@ -125,6 +130,72 @@ public partial class HudWindow : Window
         if (_translationAutoScroll.IsFollowing) OutputScroll.ScrollToEnd();
     }
     public void SetStats(int pending, int dropped) => StatsText.Text = $"Pending: {pending} / Dropped: {dropped}";
+
+    private void CopyTranscript_OnClick(object sender, RoutedEventArgs e)
+    {
+        var (label, text) = GetTranscript(((FrameworkElement)sender).Tag as string);
+        if (!EnsureTranscriptAvailable(label, text)) return;
+
+        try
+        {
+            WpfClipboard.SetText(text);
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show(
+                this,
+                $"Could not copy the {label} result. {ex.Message}",
+                "Copy subtitles",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void SaveTranscript_OnClick(object sender, RoutedEventArgs e)
+    {
+        var (label, text) = GetTranscript(((FrameworkElement)sender).Tag as string);
+        if (!EnsureTranscriptAvailable(label, text)) return;
+
+        var dialog = new SaveFileDialog
+        {
+            AddExtension = true,
+            DefaultExt = ".txt",
+            FileName = $"{label}-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
+            Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*",
+            Title = $"Save {label} result"
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        try
+        {
+            File.WriteAllText(dialog.FileName, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show(
+                this,
+                $"Could not save the {label} result. {ex.Message}",
+                "Save subtitles",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private (string Label, string Text) GetTranscript(string? kind) => kind == "stt"
+        ? ("stt", _sourceTrack.ExportText)
+        : ("translation", _translationTrack.ExportText);
+
+    private bool EnsureTranscriptAvailable(string label, string text)
+    {
+        if (!string.IsNullOrWhiteSpace(text)) return true;
+        WpfMessageBox.Show(
+            this,
+            $"No {label} result is available yet.",
+            "Subtitles",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+        return false;
+    }
 
     private void ToggleButton_OnClick(object sender, RoutedEventArgs e) => ToggleRequested?.Invoke();
     private void SettingsButton_OnClick(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();

@@ -19,6 +19,7 @@ public sealed class AppController : IDisposable
     private readonly AudioCaptureService _capture;
     private readonly AudioPlaybackService _player;
     private NotifyIcon? _tray;
+    private Icon? _trayIcon;
     private readonly DispatcherTimer _subtitleTimer;
     private readonly object _subtitleGate = new();
     private string _pendingInput = "";
@@ -52,9 +53,10 @@ public sealed class AppController : IDisposable
 
     public void StartUi()
     {
+        _trayIcon = TrayIconLoader.Load();
         _tray = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = _trayIcon,
             Text = "Live Translate",
             Visible = true,
             ContextMenuStrip = BuildTrayMenu()
@@ -270,7 +272,12 @@ public sealed class AppController : IDisposable
     public void Dispose()
     {
         Stop();
-        _tray?.Dispose();
+        if (_tray is not null)
+        {
+            _tray.Visible = false;
+            _tray.Dispose();
+        }
+        _trayIcon?.Dispose();
         _capture.Dispose();
         _player.Dispose();
         _translator.DisposeAsync().AsTask().GetAwaiter().GetResult();

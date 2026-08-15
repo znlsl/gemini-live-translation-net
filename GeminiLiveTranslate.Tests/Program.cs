@@ -19,6 +19,8 @@ Run("Soniox endpoint and language are normalized", SonioxEndpointAndLanguageAreN
 Run("Settings create provider-specific session options", SettingsCreateProviderSpecificSessionOptions);
 Run("Auto-scroll pauses until manually returned to the bottom", AutoScrollPausesUntilReturnedToBottom);
 Run("Auto-scroll states remain independent and Enter can resume them", AutoScrollStatesRemainIndependentAndCanResume);
+Run("Transcript export retains text outside the rolling display", TranscriptExportRetainsCompleteText);
+Run("Tray icon loader reads the embedded application icon", TrayIconLoaderReadsEmbeddedApplicationIcon);
 
 if (failures.Count == 0)
 {
@@ -237,6 +239,33 @@ static void AutoScrollStatesRemainIndependentAndCanResume()
     translation.Resume();
     source.Resume();
     True(translation.IsFollowing && source.IsFollowing, "An explicit resume must restore following for both panes.");
+}
+
+static void TranscriptExportRetainsCompleteText()
+{
+    var track = new RollingTextTrack();
+    for (var index = 0; index < 400; index++)
+    {
+        track.Update($"subtitle-{index:D4} contains enough text to build a long session.");
+    }
+
+    True(track.DisplayText.Length <= 6000, "The on-screen transcript must remain bounded.");
+    True(!track.DisplayText.Contains("subtitle-0000", StringComparison.Ordinal),
+        "Old text should scroll out of the bounded display.");
+    True(track.ExportText.Contains("subtitle-0000", StringComparison.Ordinal),
+        "Export must retain the beginning of the session.");
+    True(track.ExportText.Contains("subtitle-0399", StringComparison.Ordinal),
+        "Export must retain the end of the session.");
+
+    track.Clear();
+    Equal("", track.ExportText, "Clearing transcripts must also clear export text.");
+}
+
+static void TrayIconLoaderReadsEmbeddedApplicationIcon()
+{
+    using var icon = TrayIconLoader.Load();
+    True(icon.Width >= 16 && icon.Height >= 16,
+        "The embedded tray icon must contain a usable Windows icon frame.");
 }
 
 static LiveTranslationSessionOptions SessionOptions(string providerId) => new(
