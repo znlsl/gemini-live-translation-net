@@ -6,6 +6,7 @@ public sealed class RollingTextTrack
 {
     private const int MaxTextLength = 6000;
     private readonly List<string> _segments = [];
+    private readonly List<string> _exportSegments = [];
     private string _active = "";
     private DateTime _activeSince = DateTime.MinValue;
     private DateTime _lastInputAt = DateTime.MinValue;
@@ -39,6 +40,7 @@ public sealed class RollingTextTrack
     public void Clear()
     {
         _segments.Clear();
+        _exportSegments.Clear();
         _active = "";
         _activeSince = DateTime.MinValue;
         _lastInputAt = DateTime.MinValue;
@@ -46,7 +48,7 @@ public sealed class RollingTextTrack
 
     public string DisplayText => TrimToMaxLength(SoftJoin(string.Join(" ", _segments), _active));
 
-    public string ExportText => SoftJoin(string.Join(" ", _segments), _active);
+    public string ExportText => SoftJoin(string.Join(" ", _exportSegments), _active);
 
     private void CommitActive()
     {
@@ -55,21 +57,26 @@ public sealed class RollingTextTrack
         _activeSince = DateTime.MinValue;
         if (text.Length == 0) return;
 
-        var last = _segments.Count > 0 ? _segments[^1] : "";
+        CommitSegment(_segments, text);
+        CommitSegment(_exportSegments, text);
+        Prune();
+    }
+
+    private static void CommitSegment(List<string> segments, string text)
+    {
+        var last = segments.Count > 0 ? segments[^1] : "";
         if (last.Length == 0 || Similarity(last, text) < 0.96)
         {
             var merged = last.Length > 0 ? AppendDistinct(last, text) : text;
             if (last.Length > 0 && merged != last && merged.Length <= last.Length + Math.Max(120, text.Length + 8))
             {
-                _segments[^1] = merged;
+                segments[^1] = merged;
             }
             else
             {
-                _segments.Add(text);
+                segments.Add(text);
             }
         }
-
-        Prune();
     }
 
     private void Prune()

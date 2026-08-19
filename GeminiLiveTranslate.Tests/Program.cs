@@ -20,6 +20,7 @@ Run("Settings create provider-specific session options", SettingsCreateProviderS
 Run("Auto-scroll pauses until manually returned to the bottom", AutoScrollPausesUntilReturnedToBottom);
 Run("Auto-scroll states remain independent and Enter can resume them", AutoScrollStatesRemainIndependentAndCanResume);
 Run("Transcript export retains text outside the rolling display", TranscriptExportRetainsCompleteText);
+Run("Subtitle throttle retains every update for session export", SubtitleThrottleRetainsEveryUpdateForSessionExport);
 Run("Tray icon loader reads the embedded application icon", TrayIconLoaderReadsEmbeddedApplicationIcon);
 
 if (failures.Count == 0)
@@ -257,8 +258,47 @@ static void TranscriptExportRetainsCompleteText()
     True(track.ExportText.Contains("subtitle-0399", StringComparison.Ordinal),
         "Export must retain the end of the session.");
 
+    var fragmentedTrack = new RollingTextTrack();
+    for (var index = 0; index < 120; index++)
+    {
+        var marker = $"marker-{index:D3}.";
+        fragmentedTrack.Update($"container {marker} tail.");
+        fragmentedTrack.Update(marker);
+    }
+
+    True(fragmentedTrack.ExportText.Contains("marker-000.", StringComparison.Ordinal),
+        "Export must retain the first buffer after the display prunes old segments.");
+    True(fragmentedTrack.ExportText.Contains("marker-119.", StringComparison.Ordinal),
+        "Export must retain the final buffer after the display prunes old segments.");
+
     track.Clear();
     Equal("", track.ExportText, "Clearing transcripts must also clear export text.");
+}
+
+static void SubtitleThrottleRetainsEveryUpdateForSessionExport()
+{
+    var pending = new PendingSubtitleUpdates();
+    pending.Enqueue(input: "first source buffer.", output: "first translation buffer.");
+    pending.Enqueue(input: "second source buffer.", output: "second translation buffer.");
+    pending.Enqueue(input: "third source buffer.", output: "third translation buffer.");
+
+    var batch = pending.Drain();
+    Equal(3, batch.Inputs.Count, "STT updates arriving before one UI refresh must not overwrite each other.");
+    Equal(3, batch.Outputs.Count, "Translation updates arriving before one UI refresh must not overwrite each other.");
+
+    var source = new RollingTextTrack();
+    var translation = new RollingTextTrack();
+    foreach (var text in batch.Inputs) source.Update(text);
+    foreach (var text in batch.Outputs) translation.Update(text);
+
+    True(source.ExportText.Contains("first source buffer.", StringComparison.Ordinal),
+        "STT export must retain the first buffered update.");
+    True(source.ExportText.Contains("third source buffer.", StringComparison.Ordinal),
+        "STT export must retain the last buffered update.");
+    True(translation.ExportText.Contains("first translation buffer.", StringComparison.Ordinal),
+        "Translation export must retain the first buffered update.");
+    True(translation.ExportText.Contains("third translation buffer.", StringComparison.Ordinal),
+        "Translation export must retain the last buffered update.");
 }
 
 static void TrayIconLoaderReadsEmbeddedApplicationIcon()

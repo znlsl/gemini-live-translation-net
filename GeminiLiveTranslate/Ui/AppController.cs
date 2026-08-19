@@ -22,11 +22,7 @@ public sealed class AppController : IDisposable
     private NotifyIcon? _tray;
     private Icon? _trayIcon;
     private readonly DispatcherTimer _subtitleTimer;
-    private readonly object _subtitleGate = new();
-    private string _pendingInput = "";
-    private string _pendingOutput = "";
-    private bool _hasPendingInput;
-    private bool _hasPendingOutput;
+    private readonly PendingSubtitleUpdates _pendingSubtitles = new();
     private bool _running;
     private int _activeSessionId;
 
@@ -171,7 +167,8 @@ public sealed class AppController : IDisposable
     private void Stop()
     {
         _running = false;
-        ClearPendingSubtitles();
+        FlushSubtitleUpdates();
+        _subtitleTimer.Stop();
         _capture.Stop();
         _player.Stop();
         _translator.Stop();
@@ -220,55 +217,21 @@ public sealed class AppController : IDisposable
 
     private void QueueSubtitleUpdate(string? input, string? output)
     {
-        lock (_subtitleGate)
-        {
-            if (input is not null)
-            {
-                _pendingInput = input;
-                _hasPendingInput = true;
-            }
-            if (output is not null)
-            {
-                _pendingOutput = output;
-                _hasPendingOutput = true;
-            }
-        }
-
+        _pendingSubtitles.Enqueue(input, output);
         if (!_subtitleTimer.IsEnabled) _subtitleTimer.Start();
     }
 
     private void FlushSubtitleUpdates()
     {
-        string input;
-        string output;
-        bool hasInput;
-        bool hasOutput;
-        lock (_subtitleGate)
-        {
-            input = _pendingInput;
-            output = _pendingOutput;
-            hasInput = _hasPendingInput;
-            hasOutput = _hasPendingOutput;
-            _pendingInput = "";
-            _pendingOutput = "";
-            _hasPendingInput = false;
-            _hasPendingOutput = false;
-        }
-
-        if (hasOutput) _hud.SetOutput(output);
-        if (hasInput) _hud.SetInput(input);
-        if (!hasInput && !hasOutput) _subtitleTimer.Stop();
+        var batch = _pendingSubtitles.Drain();
+        foreach (var output in batch.Outputs) _hud.SetOutput(output);
+        foreach (var input in batch.Inputs) _hud.SetInput(input);
+        if (batch.IsEmpty) _subtitleTimer.Stop();
     }
 
     private void ClearPendingSubtitles()
     {
-        lock (_subtitleGate)
-        {
-            _pendingInput = "";
-            _pendingOutput = "";
-            _hasPendingInput = false;
-            _hasPendingOutput = false;
-        }
+        _pendingSubtitles.Clear();
         _subtitleTimer.Stop();
     }
 
